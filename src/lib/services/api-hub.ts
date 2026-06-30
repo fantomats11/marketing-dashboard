@@ -150,7 +150,7 @@ export class CentralApiHub {
         WHERE segments.date DURING THIS_MONTH
       `
 
-      const url = `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:search`
+      const url = `https://googleads.googleapis.com/v21/customers/${customerId}/googleAds:search`
       const res = await fetch(url, {
         method: 'POST',
         headers: {

@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. ดึงลูกค้า (Customer IDs) ที่อยู่ภายใต้สิทธิ์บัญชีนี้
-    const customersRes = await fetch('https://googleads.googleapis.com/v17/customers:listAccessibleCustomers', {
+    const customersRes = await fetch('https://googleads.googleapis.com/v21/customers:listAccessibleCustomers', {
       headers: {
         'Authorization': `Bearer ${access_token}`,
         'developer-token': devToken,
