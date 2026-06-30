@@ -988,6 +988,28 @@ export default function DashboardClientWrapper({
                       <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                         จำนวนบัญชีโฆษณา: <strong style={{ color: 'white' }}>{accountsCount}</strong>
                       </div>
+                      {platform === 'tiktok-ads' && (
+                        <a 
+                          href="https://business-api.tiktok.com/portal/auth?app_id=7651553209164496897&state=tiktok_auth_state&redirect_uri=https%3A%2F%2Fwww.rentacoat.com%2Ftiktok%2Foauth%2Fcallback"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-primary" 
+                          style={{ marginTop: '8px', fontSize: '11px', padding: '6px 12px', textAlign: 'center', textDecoration: 'none', background: '#000000', border: '1px solid rgba(255,255,255,0.15)', display: 'block', borderRadius: '6px', color: 'white' }}
+                        >
+                          🎵 เชื่อมต่อ TikTok Ads
+                        </a>
+                      )}
+                      {platform === 'tiktok-shop' && (
+                        <a 
+                          href="https://www.tiktok.com/v2/auth/authorize?client_key=7651553209164496897&scope=user.info.basic,user.info.username,user.info.stats,user.info.profile,user.account.type,user.insights,video.list,video.insights,comment.list,comment.list.manage,video.publish,video.upload,biz.spark.auth,discovery.search.words&response_type=code&redirect_uri=https%3A%2F%2Fwww.rentacoat.com%2Ftiktok%2Faccount-holder%2Fcallback&state=tiktok_creator_state"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-primary" 
+                          style={{ marginTop: '8px', fontSize: '11px', padding: '6px 12px', textAlign: 'center', textDecoration: 'none', background: '#00F2FE', color: '#000000', border: 'none', fontWeight: '700', display: 'block', borderRadius: '6px' }}
+                        >
+                          🎵 เชื่อมสถิติช่อง TikTok
+                        </a>
+                      )}
                     </div>
                   )
                 })}
