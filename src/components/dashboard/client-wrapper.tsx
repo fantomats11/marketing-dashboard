@@ -79,6 +79,13 @@ export default function DashboardClientWrapper({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [saveStatus, setSaveStatus] = useState<string>('')
 
+  // --- States for Loading UX ---
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null)
+  const [isAddingDomain, setIsAddingDomain] = useState(false)
+  const [deletingDomainId, setDeletingDomainId] = useState<string | null>(null)
+
   // --- States for Share Link Modal ---
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [shareSelectedAccounts, setShareSelectedAccounts] = useState<string[]>([])
@@ -184,6 +191,98 @@ export default function DashboardClientWrapper({
     } catch {
       setSaveStatus('Failed')
       setTimeout(() => setSaveStatus(''), 2000)
+    }
+  }
+
+  const handleDomainAdd = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const domainVal = formData.get('domain') as string
+    if (!domainVal) return
+
+    setIsAddingDomain(true)
+    try {
+      await addAllowedDomain(formData)
+      e.currentTarget.reset()
+      router.refresh()
+    } catch {
+      alert('Failed to add domain')
+    } finally {
+      setIsAddingDomain(false)
+    }
+  }
+
+  const handleDomainDelete = async (domainId: string) => {
+    if (confirm(lang === 'TH' ? 'คุณแน่ใจหรือไม่ว่าต้องการลบโดเมนนี้?' : 'Are you sure you want to delete this domain?')) {
+      setDeletingDomainId(domainId)
+      try {
+        await deleteAllowedDomain(domainId)
+        router.refresh()
+      } catch {
+        alert('Failed to delete domain')
+      } finally {
+        setDeletingDomainId(null)
+      }
+    }
+  }
+
+  const handleSyncAccounts = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSyncing(true)
+    setSyncMessage(lang === 'TH' ? 'กำลังดึงข้อมูลแคมเปญจริงทาง API... (กรุณารอ 5-10 วินาที)' : 'Fetching actual campaign stats via APIs... (Please wait 5-10s)')
+    try {
+      await syncAccounts()
+      setSyncMessage(lang === 'TH' ? 'ซิงก์ข้อมูลบัญชีสำเร็จเรียบร้อย!' : 'Successfully synced campaign data!')
+      router.refresh()
+    } catch {
+      setSyncMessage(lang === 'TH' ? 'เกิดข้อผิดพลาดในการเชื่อมต่อดึงข้อมูล' : 'Failed to synchronize data')
+    } finally {
+      setIsSyncing(false)
+      setTimeout(() => setSyncMessage(''), 4000)
+    }
+  }
+
+  const handleDeleteAdAccount = async (accId: string, accName: string) => {
+    if (confirm(lang === 'TH' ? `คุณแน่ใจหรือไม่ว่าต้องการยกเลิกการเชื่อมต่อบัญชี ${accName}?` : `Are you sure you want to disconnect ${accName}?`)) {
+      setDeletingAccountId(accId)
+      try {
+        await deleteAdAccount(accId)
+        router.refresh()
+      } catch {
+        alert('Failed to disconnect account')
+      } finally {
+        setDeletingAccountId(null)
+      }
+    }
+  }
+
+  const handleConnectPlatform = (platform: string) => {
+    const origin = window.location.origin
+    
+    if (platform === 'google-ads') {
+      const clientId = "606936106469-lt91qnbglt5pfrt6l8oevik7mgh3v7o6.apps.googleusercontent.com"
+      const redirectUri = encodeURIComponent(`${origin}/api/auth/google/callback`)
+      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fadwords&access_type=offline&prompt=consent`
+    } 
+    else if (platform === 'facebook-ads') {
+      let appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || ""
+      if (!appId) {
+        appId = prompt(lang === 'TH' ? 'กรุณากรอก Facebook App ID ของคุณ:' : 'Please enter your Facebook App ID:') || ''
+      }
+      if (!appId) return
+      
+      const redirectUri = encodeURIComponent(`${origin}/api/auth/facebook/callback`)
+      window.location.href = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&response_type=code&scope=ads_read,business_management`
+    }
+    else if (platform === 'tiktok-ads') {
+      const appId = "7651553209164496897"
+      const redirectUri = encodeURIComponent(`${origin}/tiktok/oauth/callback`)
+      window.location.href = `https://business-api.tiktok.com/portal/auth?app_id=${appId}&state=tiktok_auth_state&redirect_uri=${redirectUri}`
+    }
+    else if (platform === 'tiktok-shop') {
+      const clientKey = "7651553209164496897"
+      const redirectUri = encodeURIComponent(`${origin}/tiktok/account-holder/callback`)
+      window.location.href = `https://www.tiktok.com/v2/auth/authorize?client_key=${clientKey}&scope=user.info.basic,user.info.username,user.info.stats,user.info.profile,user.account.type,user.insights,video.list,video.insights,comment.list,comment.list.manage,video.publish,video.upload,biz.spark.auth,discovery.search.words&response_type=code&redirect_uri=${redirectUri}&state=tiktok_creator_state`
     }
   }
 
@@ -988,27 +1087,41 @@ export default function DashboardClientWrapper({
                       <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                         จำนวนบัญชีโฆษณา: <strong style={{ color: 'white' }}>{accountsCount}</strong>
                       </div>
-                      {platform === 'tiktok-ads' && (
-                        <a 
-                          href="https://business-api.tiktok.com/portal/auth?app_id=7651553209164496897&state=tiktok_auth_state&redirect_uri=https%3A%2F%2Fwww.rentacoat.com%2Ftiktok%2Foauth%2Fcallback"
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {platform === 'google-ads' && (
+                        <button 
+                          onClick={() => handleConnectPlatform('google-ads')}
+                          className="btn-secondary" 
+                          style={{ marginTop: '10px', fontSize: '11px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', borderRadius: '6px', cursor: 'pointer', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
+                        >
+                          🌐 เชื่อมต่อ Google Ads
+                        </button>
+                      )}
+                      {platform === 'facebook-ads' && (
+                        <button 
+                          onClick={() => handleConnectPlatform('facebook-ads')}
                           className="btn-primary" 
-                          style={{ marginTop: '8px', fontSize: '11px', padding: '6px 12px', textAlign: 'center', textDecoration: 'none', background: '#000000', border: '1px solid rgba(255,255,255,0.15)', display: 'block', borderRadius: '6px', color: 'white' }}
+                          style={{ marginTop: '10px', fontSize: '11px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', borderRadius: '6px', cursor: 'pointer', background: '#1877F2', border: 'none', color: 'white', fontWeight: 'bold' }}
+                        >
+                          🔵 เชื่อมต่อ Facebook Ads
+                        </button>
+                      )}
+                      {platform === 'tiktok-ads' && (
+                        <button 
+                          onClick={() => handleConnectPlatform('tiktok-ads')}
+                          className="btn-primary" 
+                          style={{ marginTop: '10px', fontSize: '11px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', borderRadius: '6px', cursor: 'pointer', background: '#000000', border: '1px solid rgba(255,255,255,0.15)', color: 'white' }}
                         >
                           🎵 เชื่อมต่อ TikTok Ads
-                        </a>
+                        </button>
                       )}
                       {platform === 'tiktok-shop' && (
-                        <a 
-                          href="https://www.tiktok.com/v2/auth/authorize?client_key=7651553209164496897&scope=user.info.basic,user.info.username,user.info.stats,user.info.profile,user.account.type,user.insights,video.list,video.insights,comment.list,comment.list.manage,video.publish,video.upload,biz.spark.auth,discovery.search.words&response_type=code&redirect_uri=https%3A%2F%2Fwww.rentacoat.com%2Ftiktok%2Faccount-holder%2Fcallback&state=tiktok_creator_state"
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button 
+                          onClick={() => handleConnectPlatform('tiktok-shop')}
                           className="btn-primary" 
-                          style={{ marginTop: '8px', fontSize: '11px', padding: '6px 12px', textAlign: 'center', textDecoration: 'none', background: '#00F2FE', color: '#000000', border: 'none', fontWeight: '700', display: 'block', borderRadius: '6px' }}
+                          style={{ marginTop: '10px', fontSize: '11px', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', borderRadius: '6px', cursor: 'pointer', background: '#00F2FE', color: '#000000', border: 'none', fontWeight: 'bold' }}
                         >
                           🎵 เชื่อมสถิติช่อง TikTok
-                        </a>
+                        </button>
                       )}
                     </div>
                   )
@@ -1057,11 +1170,20 @@ export default function DashboardClientWrapper({
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>ID: {acc.account_id}</span>
                           </div>
                           
-                          <form action={deleteAdAccount.bind(null, acc.id)}>
-                            <button type="submit" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
-                              ลบการเชื่อมต่อ
-                            </button>
-                          </form>
+                           <button 
+                             onClick={() => handleDeleteAdAccount(acc.id, acc.account_name)}
+                             disabled={deletingAccountId !== null}
+                             style={{ 
+                               background: 'transparent', 
+                               border: 'none', 
+                               color: deletingAccountId === acc.id ? 'var(--text-muted)' : '#EF4444', 
+                               cursor: deletingAccountId !== null ? 'not-allowed' : 'pointer', 
+                               fontSize: '12px', 
+                               fontWeight: 'bold' 
+                             }}
+                           >
+                             {deletingAccountId === acc.id ? (lang === 'TH' ? 'กำลังลบ...' : 'Deleting...') : (lang === 'TH' ? 'ลบการเชื่อมต่อ' : 'Disconnect')}
+                           </button>
                         </div>
                       ))
                     )}
@@ -1075,18 +1197,30 @@ export default function DashboardClientWrapper({
                     จำกัดการล็อกอินเข้าระบบหลังบ้านเฉพาะผู้ใช้งานที่มีโดเมนอีเมลบริษัทตรงกับที่ลงทะเบียนไว้ด้านล่างนี้
                   </p>
                   
-                  <form action={addAllowedDomain} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-                    <input name="domain" type="text" placeholder={t.domainInputPlaceholder} required className="input-field" style={{ padding: '10px 14px', fontSize: '13px' }} />
-                    <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 20px', fontSize: '13px', whiteSpace: 'nowrap' }}>เพิ่มโดเมน</button>
+                  <form onSubmit={handleDomainAdd} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                    <input name="domain" type="text" disabled={isAddingDomain} placeholder={t.domainInputPlaceholder} required className="input-field" style={{ padding: '10px 14px', fontSize: '13px' }} />
+                    <button type="submit" disabled={isAddingDomain} className="btn-primary" style={{ width: 'auto', padding: '10px 20px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                      {isAddingDomain ? (lang === 'TH' ? 'กำลังเพิ่ม...' : 'Adding...') : (lang === 'TH' ? 'เพิ่มโดเมน' : 'Add Domain')}
+                    </button>
                   </form>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
                     {allowedDomains.map((d: any) => (
                       <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.04)', padding: '10px 14px', borderRadius: '8px', fontSize: '13px' }}>
                         <span>{d.domain}</span>
-                        <form action={deleteAllowedDomain.bind(null, d.id)}>
-                          <button type="submit" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '11px' }}>ลบ</button>
-                        </form>
+                        <button 
+                          onClick={() => handleDomainDelete(d.id)}
+                          disabled={deletingDomainId !== null}
+                          style={{ 
+                            background: 'transparent', 
+                            border: 'none', 
+                            color: deletingDomainId === d.id ? 'var(--text-muted)' : '#EF4444', 
+                            cursor: deletingDomainId !== null ? 'not-allowed' : 'pointer', 
+                            fontSize: '11px' 
+                          }}
+                        >
+                          {deletingDomainId === d.id ? (lang === 'TH' ? '...' : '...') : (lang === 'TH' ? 'ลบ' : 'Delete')}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1102,11 +1236,48 @@ export default function DashboardClientWrapper({
                     กดปุ่มนี้เพื่อดึงข้อมูลสถิติล่าสุดจาก Meta, Google, TikTok เข้ามาคำนวณและเก็บไว้ในระบบฐานข้อมูลแคชความไวสูง
                   </p>
                   
-                  <form action={syncAccounts}>
-                    <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                      <span>⚡</span> {t.syncNow}
+                  <form onSubmit={handleSyncAccounts}>
+                    <button 
+                      type="submit" 
+                      disabled={isSyncing}
+                      className="btn-primary" 
+                      style={{ 
+                        width: '100%', 
+                        padding: '12px', 
+                        fontSize: '14px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: '8px',
+                        cursor: isSyncing ? 'not-allowed' : 'pointer',
+                        opacity: isSyncing ? 0.7 : 1
+                      }}
+                    >
+                      {isSyncing ? (
+                        <>
+                          <span className="spinner" style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></span>
+                          <span>{lang === 'TH' ? 'กำลังซิงก์ข้อมูล...' : 'Syncing...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>⚡</span> {t.syncNow}
+                        </>
+                      )}
                     </button>
                   </form>
+                  {syncMessage && (
+                    <div style={{ 
+                      fontSize: '12px', 
+                      textAlign: 'center', 
+                      padding: '8px', 
+                      borderRadius: '6px', 
+                      background: 'rgba(139,92,246,0.1)', 
+                      color: 'white', 
+                      marginTop: '8px' 
+                    }}>
+                      {syncMessage}
+                    </div>
+                  )}
                   
                   <a href="/api/cron/sync?manual=true" target="_blank" className="btn-secondary" style={{ display: 'block', textAlign: 'center', padding: '10px', fontSize: '12px', textDecoration: 'none' }}>
                     เปิด Cron API Endpoint 🌐
