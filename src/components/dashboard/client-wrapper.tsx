@@ -71,7 +71,7 @@ export default function DashboardClientWrapper({
     initialPreferences?.selectedPlatforms || ['facebook-ads', 'google-ads', 'tiktok-ads', 'tiktok-shop']
   )
 
-  const defaultPriority = ['spend', 'roas', 'cpa', 'ctr', 'conversions', 'clicks']
+  const defaultPriority = ['spend', 'impressions', 'reach', 'clicks', 'conversions', 'roas', 'ctr', 'cpa']
   const [priorityMetrics, setPriorityMetrics] = useState<string[]>(
     initialPreferences?.priorityMetrics || defaultPriority
   )
@@ -90,12 +90,13 @@ export default function DashboardClientWrapper({
 
   const allAvailableMetrics = [
     { key: 'spend', name: t.spend },
-    { key: 'roas', name: t.roas },
-    { key: 'cpa', name: t.cpa },
-    { key: 'ctr', name: t.ctr },
-    { key: 'conversions', name: t.conversions },
-    { key: 'clicks', name: t.clicks },
     { key: 'impressions', name: t.impressions },
+    { key: 'reach', name: t.reach },
+    { key: 'clicks', name: t.clicks },
+    { key: 'conversions', name: t.conversions },
+    { key: 'roas', name: t.roas },
+    { key: 'ctr', name: t.ctr },
+    { key: 'cpa', name: t.cpa },
     { key: 'revenue', name: t.revenue },
     { key: 'cpc', name: t.cpc },
   ]
@@ -115,34 +116,57 @@ export default function DashboardClientWrapper({
 
   // คำนวณผลรวม (Aggregated Metrics) — Memoized
   const aggregated = useMemo(() => {
-    let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalConversions = 0, totalRevenue = 0
+    let totalSpend = 0, totalClicks = 0, totalImpressions = 0, totalConversions = 0, totalRevenue = 0, totalReach = 0
     filteredData.forEach(item => {
       totalSpend += Number(item.metrics.spend || 0)
       totalClicks += Number(item.metrics.clicks || 0)
       totalImpressions += Number(item.metrics.impressions || 0)
       totalConversions += Number(item.metrics.conversions || 0)
       totalRevenue += Number(item.metrics.revenue || 0)
+      totalReach += Number(item.metrics.reach || 0)
     })
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) : 0
     const averageCpa = totalConversions > 0 ? (totalSpend / totalConversions) : 0
     const averageRoas = totalSpend > 0 ? (totalRevenue / totalSpend) : 0
     const averageCpc = totalClicks > 0 ? (totalSpend / totalClicks) : 0
-    return { totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, averageCtr, averageCpa, averageRoas, averageCpc }
+    return { totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, totalReach, averageCtr, averageCpa, averageRoas, averageCpc }
   }, [filteredData])
 
-  const { totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, averageCtr, averageCpa, averageRoas, averageCpc } = aggregated
+  const { totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, totalReach, averageCtr, averageCpa, averageRoas, averageCpc } = aggregated
 
   const metricValuesMap = useMemo<Record<string, { value: string; color: string }>>(() => ({
     spend: { value: `฿${totalSpend.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, color: '#8B5CF6' },
-    roas: { value: `${averageRoas.toFixed(2)}x`, color: '#10B981' },
-    cpa: { value: `฿${averageCpa.toFixed(2)}`, color: '#EF4444' },
-    ctr: { value: `${(averageCtr * 100).toFixed(2)}%`, color: '#3B82F6' },
-    conversions: { value: totalConversions.toLocaleString(), color: '#EC4899' },
-    clicks: { value: totalClicks.toLocaleString(), color: '#6366F1' },
     impressions: { value: totalImpressions.toLocaleString(), color: '#F59E0B' },
+    reach: { value: totalReach.toLocaleString(), color: '#10B981' },
+    clicks: { value: totalClicks.toLocaleString(), color: '#6366F1' },
+    conversions: { value: totalConversions.toLocaleString(), color: '#EC4899' },
+    roas: { value: `${averageRoas.toFixed(2)}x`, color: '#10B981' },
+    ctr: { value: `${(averageCtr * 100).toFixed(2)}%`, color: '#3B82F6' },
+    cpa: { value: `฿${averageCpa.toFixed(2)}`, color: '#EF4444' },
     revenue: { value: `฿${totalRevenue.toLocaleString()}`, color: '#10B981' },
     cpc: { value: `฿${averageCpc.toFixed(2)}`, color: '#06B6D4' },
-  }), [totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, averageCtr, averageCpa, averageRoas, averageCpc])
+  }), [totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, totalReach, averageCtr, averageCpa, averageRoas, averageCpc])
+
+  const marketingSummaryText = useMemo(() => {
+    if (filteredData.length === 0) {
+      return lang === 'TH' ? 'ไม่พบข้อมูลแคมเปญในช่วงเวลาที่เลือก' : 'No campaign data found for the selected period.'
+    }
+
+    const reachVal = totalReach.toLocaleString()
+    const impressionsVal = totalImpressions.toLocaleString()
+    const clicksVal = totalClicks.toLocaleString()
+    const convsVal = totalConversions.toLocaleString()
+    const spendVal = totalSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    const cpaVal = averageCpa.toFixed(2)
+    const ctrVal = (averageCtr * 100).toFixed(2)
+    const roasVal = averageRoas.toFixed(2)
+
+    if (lang === 'TH') {
+      return `ในช่วงเวลาที่เลือก โฆษณาของคุณใช้งบไปทั้งหมด ฿${spendVal} โดยมียอดแสดงผล (Impressions) ทั้งหมด ${impressionsVal} ครั้ง และเข้าถึงลูกค้ากลุ่มเป้าหมายที่ไม่ซ้ำกัน (Reach) จำนวน ${reachVal} คน มีการคลิกเข้าชมโฆษณา ${clicksVal} ครั้ง คิดเป็นอัตราคลิกต่อการเห็น (CTR) อยู่ที่ ${ctrVal}% ซึ่งส่งผลลัพธ์เป็นผู้สนใจหรือผู้ทักแชท (Conversions) จำนวนทั้งสิ้น ${convsVal} ราย โดยมีค่าโฆษณาเฉลี่ยต่อผู้สนใจใหม่ (CPA) อยู่ที่ ฿${cpaVal} ต่อราย และสามารถสร้างผลตอบแทนการลงทุนโฆษณา (ROAS) คิดเป็นอัตราส่วน ${roasVal} เท่าของงบที่เสียไป`
+    } else {
+      return `During this selected period, your campaigns spent ฿${spendVal} in total. The ads achieved ${impressionsVal} impressions, reaching ${reachVal} unique users (Reach). This led to ${clicksVal} clicks, yielding an average click-through rate (CTR) of ${ctrVal}%, resulting in ${convsVal} conversions (leads/messages). The cost per acquisition (CPA) averaged ฿${cpaVal} per conversion, delivering a return on ad spend (ROAS) of ${roasVal}x.`
+    }
+  }, [filteredData, totalReach, totalImpressions, totalClicks, totalConversions, totalSpend, averageCpa, averageCtr, averageRoas, lang])
 
   // --- Save Preferences ---
   const handleSavePreferences = async () => {
@@ -240,6 +264,7 @@ export default function DashboardClientWrapper({
     spend: number
     clicks: number
     conversions: number
+    impressions: number
     ads: AdNode[]
   }
 
@@ -251,6 +276,7 @@ export default function DashboardClientWrapper({
     spend: number
     clicks: number
     conversions: number
+    impressions: number
     targets: TargetNode[]
   }
 
@@ -273,8 +299,8 @@ export default function DashboardClientWrapper({
     const spend = Number(item.metrics.spend || 0)
     const clicks = Number(item.metrics.clicks || 0)
     const conversions = Number(item.metrics.conversions || 0)
-
     const impressions = Number(item.metrics.impressions || 0)
+
     const adNode: AdNode = {
       id: adId,
       name: adName,
@@ -291,6 +317,7 @@ export default function DashboardClientWrapper({
       cNode.spend += spend
       cNode.clicks += clicks
       cNode.conversions += conversions
+      cNode.impressions += impressions
 
       const tIdx = cNode.targets.findIndex(t => t.id === targetId)
       if (tIdx > -1) {
@@ -298,6 +325,7 @@ export default function DashboardClientWrapper({
         tNode.spend += spend
         tNode.clicks += clicks
         tNode.conversions += conversions
+        tNode.impressions += impressions
         tNode.ads.push(adNode)
       } else {
         cNode.targets.push({
@@ -306,6 +334,7 @@ export default function DashboardClientWrapper({
           spend,
           clicks,
           conversions,
+          impressions,
           ads: [adNode]
         })
       }
@@ -318,6 +347,7 @@ export default function DashboardClientWrapper({
         spend,
         clicks,
         conversions,
+        impressions,
         targets: [
           {
             id: targetId,
@@ -325,6 +355,7 @@ export default function DashboardClientWrapper({
             spend,
             clicks,
             conversions,
+            impressions,
             ads: [adNode]
           }
         ]
@@ -702,11 +733,30 @@ export default function DashboardClientWrapper({
                   </div>
                 </section>
 
+                {/* 💡 สรุปวิเคราะห์ผลลัพธ์โฆษณา (Executive Marketing Summary) */}
+                <div className="glass-card" style={{ 
+                  padding: '16px 20px', 
+                  marginBottom: '20px', 
+                  borderLeft: '4px solid var(--primary)',
+                  background: 'rgba(139, 92, 246, 0.03)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>💡</span>
+                    <h3 style={{ fontSize: '13px', fontWeight: '700', color: 'white', margin: 0 }}>
+                      {lang === 'TH' ? 'บทวิเคราะห์ผลลัพธ์แคมเปญ (Executive Marketing Summary)' : 'Campaign Performance Summary'}
+                    </h3>
+                  </div>
+                  <p style={{ fontSize: '13px', lineHeight: '1.6', color: 'rgba(255,255,255,0.85)', margin: 0 }}>
+                    {marketingSummaryText}
+                  </p>
+                </div>
+
                 {/* Customizable Metric Cards Grid */}
                 <div style={{ 
                   display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-                  gap: '15px' 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                  gap: '15px',
+                  marginBottom: '25px'
                 }}>
                   {priorityMetrics.map((key) => {
                     const matched = allAvailableMetrics.find(m => m.key === key)
@@ -818,8 +868,12 @@ export default function DashboardClientWrapper({
                                     )}
                                   </td>
                                   <td style={{ padding: '12px 6px', textAlign: 'right' }}>฿{camp.spend.toLocaleString()}</td>
-                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>{camp.clicks.toLocaleString()}</td>
-                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>{camp.conversions.toLocaleString()}</td>
+                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>
+                                    {camp.clicks.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({((camp.clicks / (camp.impressions || 1)) * 100).toFixed(1)}%)</span>
+                                  </td>
+                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>
+                                    {camp.conversions.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(฿{(camp.conversions > 0 ? camp.spend / camp.conversions : 0).toFixed(1)})</span>
+                                  </td>
                                   <td style={{ padding: '12px 6px', textAlign: 'right', fontWeight: 'bold' }}>{campRoas > 0 ? `${campRoas.toFixed(1)}x` : '-'}</td>
                                 </tr>
 
@@ -843,8 +897,12 @@ export default function DashboardClientWrapper({
                                         </td>
                                         <td style={{ padding: '8px 6px' }}>-</td>
                                         <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>฿{target.spend.toLocaleString()}</td>
-                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>{target.clicks.toLocaleString()}</td>
-                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>{target.conversions.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                                          {target.clicks.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({((target.clicks / (target.impressions || 1)) * 100).toFixed(1)}%)</span>
+                                        </td>
+                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>
+                                          {target.conversions.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(฿{(target.conversions > 0 ? target.spend / target.conversions : 0).toFixed(1)})</span>
+                                        </td>
                                         <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
                                       </tr>
 

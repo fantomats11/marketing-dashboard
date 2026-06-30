@@ -105,7 +105,7 @@ export async function syncAccounts() {
         // รวบรวม RPC calls ของแต่ละบัญชีเป็น parallel
         await Promise.all(
           records.map(async (item) => {
-            const { spend, clicks, impressions, conversions, revenue } = item.metrics
+            const { spend, clicks, impressions, conversions, revenue, reach } = item.metrics
             const ctr = impressions > 0 ? clicks / impressions : 0
             const cpa = conversions > 0 ? spend / conversions : 0
             const roas = spend > 0 ? revenue / spend : 0
@@ -121,7 +121,7 @@ export async function syncAccounts() {
             }
 
             const metrics = {
-              spend, clicks, impressions, conversions, revenue,
+              spend, clicks, impressions, conversions, revenue, reach: reach || 0,
               ctr, cpa, roas
             }
 

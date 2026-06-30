@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
           // รวบรวม RPC calls ทั้งหมดของบัญชีนี้แล้วส่งแบบ parallel
           const upsertPromises = records.map(async (item) => {
-            const { spend, clicks, impressions, conversions, revenue } = item.metrics
+            const { spend, clicks, impressions, conversions, revenue, reach } = item.metrics
 
             const ctr = impressions > 0 ? clicks / impressions : 0
             const cpa = conversions > 0 ? spend / conversions : 0
@@ -75,6 +75,7 @@ export async function GET(request: Request) {
               impressions,
               conversions,
               revenue,
+              reach: reach || 0,
               ctr,
               cpa,
               roas

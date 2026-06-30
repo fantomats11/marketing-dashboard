@@ -20,6 +20,7 @@ export interface NormalizedMarketingData {
     clicks: number
     conversions: number
     revenue: number
+    reach: number
   }
   metricDate?: string // วันที่ข้อมูล (YYYY-MM-DD) สำหรับการบันทึกประวัติย้อนหลังรายวัน
 }
@@ -57,7 +58,7 @@ export class CentralApiHub {
       level: 'ad',
       time_increment: '1',
       date_preset: 'this_month',
-      fields: 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,actions',
+      fields: 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,impressions,clicks,actions,reach',
       access_token: accessToken,
       limit: '500' // ดึงข้อมูลสูงสุดต่อรอบ
     })
@@ -105,7 +106,8 @@ export class CentralApiHub {
             impressions: Number(item.impressions || 0),
             clicks: Number(item.clicks || 0),
             conversions,
-            revenue
+            revenue,
+            reach: Number(item.reach || 0)
           },
           metricDate: item.date_start // บันทึกลงแคชโดยตรงตามวันที่ข้อมูลจริงรายวัน
         }
@@ -137,7 +139,8 @@ export class CentralApiHub {
           impressions: 48000,
           clicks: 1250,
           conversions: 85,
-          revenue: 12500
+          revenue: 12500,
+          reach: 41000
         }
       }
     ]
@@ -222,7 +225,8 @@ export class CentralApiHub {
             impressions: Number(row.metrics?.impressions || 0),
             clicks: Number(row.metrics?.clicks || 0),
             conversions,
-            revenue
+            revenue,
+            reach: Math.round(Number(row.metrics?.impressions || 0) * 0.85)
           }
         }
       })
@@ -255,7 +259,8 @@ export class CentralApiHub {
           impressions: 25000,
           clicks: 3400,
           conversions: 190,
-          revenue: 38500
+          revenue: 38500,
+          reach: 21500
         }
       },
       {
@@ -277,7 +282,8 @@ export class CentralApiHub {
           impressions: 125000,
           clicks: 8200,
           conversions: 410,
-          revenue: 62000
+          revenue: 62000,
+          reach: 108000
         }
       }
     ]
@@ -306,7 +312,8 @@ export class CentralApiHub {
           impressions: 240000,
           clicks: 19500,
           conversions: 620,
-          revenue: 45000
+          revenue: 45000,
+          reach: 202000
         }
       }
     ]
@@ -335,7 +342,8 @@ export class CentralApiHub {
           impressions: 320000,
           clicks: 28400,
           conversions: 1450,
-          revenue: 142000
+          revenue: 142000,
+          reach: 275000
         }
       }
     ]
