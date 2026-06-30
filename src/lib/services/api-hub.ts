@@ -76,7 +76,7 @@ export class CentralApiHub {
         const leadAction = item.actions?.find((a: any) => a.action_type === 'onsite_conversion.lead' || a.action_type === 'lead')
         const msgAction = item.actions?.find((a: any) => a.action_type === 'onsite_conversion.total_messaging_connection')
         const conversions = Number(leadAction?.value || msgAction?.value || 0)
-        const revenue = conversions * 15000 // สมมติมูลค่า Conversions ละ 15,000 บาท
+        const revenue = 0 // O2O model does not report revenue through ad networks
 
         return {
           campaignId: item.campaign_id,
@@ -258,7 +258,7 @@ export class CentralApiHub {
         const campaignName = campaignMap.get(campaignId) || `TikTok Campaign ${campaignId}`
         const spend = Number(item.metrics?.spend || 0)
         const conversions = Number(item.metrics?.conversion || 0)
-        const revenue = conversions * 8000 // มูลค่าต่อ Conversion สมมติของ TikTok
+        const revenue = 0 // O2O model does not report revenue through ad networks
 
         return {
           campaignId,

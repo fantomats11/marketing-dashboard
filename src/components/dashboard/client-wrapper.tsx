@@ -353,6 +353,7 @@ export default function DashboardClientWrapper({
     spend: number
     clicks: number
     conversions: number
+    revenue: number
     ctr: number
     cpa: number
   }
@@ -364,6 +365,7 @@ export default function DashboardClientWrapper({
     clicks: number
     conversions: number
     impressions: number
+    revenue: number
     ads: AdNode[]
   }
 
@@ -376,6 +378,7 @@ export default function DashboardClientWrapper({
     clicks: number
     conversions: number
     impressions: number
+    revenue: number
     targets: TargetNode[]
   }
 
@@ -399,6 +402,7 @@ export default function DashboardClientWrapper({
     const clicks = Number(item.metrics.clicks || 0)
     const conversions = Number(item.metrics.conversions || 0)
     const impressions = Number(item.metrics.impressions || 0)
+    const revenue = Number(item.metrics.revenue || 0)
 
     const adNode: AdNode = {
       id: adId,
@@ -407,6 +411,7 @@ export default function DashboardClientWrapper({
       spend,
       clicks,
       conversions,
+      revenue,
       ctr: impressions > 0 ? (clicks / impressions) : 0,
       cpa: conversions > 0 ? (spend / conversions) : 0
     }
@@ -417,6 +422,7 @@ export default function DashboardClientWrapper({
       cNode.clicks += clicks
       cNode.conversions += conversions
       cNode.impressions += impressions
+      cNode.revenue += revenue
 
       const tIdx = cNode.targets.findIndex(t => t.id === targetId)
       if (tIdx > -1) {
@@ -425,6 +431,7 @@ export default function DashboardClientWrapper({
         tNode.clicks += clicks
         tNode.conversions += conversions
         tNode.impressions += impressions
+        tNode.revenue += revenue
         tNode.ads.push(adNode)
       } else {
         cNode.targets.push({
@@ -434,6 +441,7 @@ export default function DashboardClientWrapper({
           clicks,
           conversions,
           impressions,
+          revenue,
           ads: [adNode]
         })
       }
@@ -447,6 +455,7 @@ export default function DashboardClientWrapper({
         clicks,
         conversions,
         impressions,
+        revenue,
         targets: [
           {
             id: targetId,
@@ -455,6 +464,7 @@ export default function DashboardClientWrapper({
             clicks,
             conversions,
             impressions,
+            revenue,
             ads: [adNode]
           }
         ]
@@ -934,7 +944,7 @@ export default function DashboardClientWrapper({
                         ) : (
                           campaigns.map(camp => {
                             const isCampExpanded = expandedRows.has(camp.id)
-                            const campRoas = averageRoas
+                            const campRoas = camp.spend > 0 ? (camp.revenue / camp.spend) : 0
 
                             return (
                               <React.Fragment key={camp.id}>
@@ -1027,7 +1037,7 @@ export default function DashboardClientWrapper({
                                             {ad.clicks.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({(ad.ctr * 100).toFixed(1)}%)</span>
                                           </td>
                                           <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>
-                                            {ad.conversions.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(${ad.cpa.toFixed(1)})</span>
+                                            {ad.conversions.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(฿{ad.cpa.toFixed(1)})</span>
                                           </td>
                                           <td style={{ padding: '6px 6px', textAlign: 'right' }}>-</td>
                                         </tr>
