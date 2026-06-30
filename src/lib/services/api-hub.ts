@@ -211,12 +211,30 @@ export class CentralApiHub {
       const today = new Date().toISOString().split('T')[0]
       const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
 
+      // 1. ดึงข้อมูลแคมเปญทั้งหมดเพื่อเอาชื่อแคมเปญ (campaign_name)
+      const campaignUrl = `https://business-api.tiktok.com/open_api/v1.3/campaign/get/?` + new URLSearchParams({
+        advertiser_id: accountId,
+        page_size: '100'
+      })
+      const campaignRes = await fetch(campaignUrl, {
+        headers: { 'Access-Token': accessToken, 'Content-Type': 'application/json' }
+      })
+      const campaignJson = await campaignRes.json()
+      const campaignMap = new Map<string, string>()
+      
+      if (campaignJson.code === 0 && campaignJson.data?.list) {
+        campaignJson.data.list.forEach((c: any) => {
+          campaignMap.set(c.campaign_id, c.campaign_name)
+        })
+      }
+
+      // 2. ดึงรายงานสถิติแยกตามแคมเปญ
       const url = `https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/?` + new URLSearchParams({
         advertiser_id: accountId,
         report_type: 'BASIC',
-        data_level: 'AU_AD',
-        dimensions: JSON.stringify(['stat_time_day', 'campaign_id', 'campaign_name', 'ad_id', 'ad_name']),
-        metrics: JSON.stringify(['spend', 'impressions', 'clicks', 'conversions']),
+        data_level: 'AUCTION_CAMPAIGN',
+        dimensions: JSON.stringify(['campaign_id']),
+        metrics: JSON.stringify(['spend', 'impressions', 'clicks', 'conversion']),
         start_date: firstDay,
         end_date: today,
         page_size: '100'
@@ -236,18 +254,20 @@ export class CentralApiHub {
       }
 
       return json.data.list.map((item: any) => {
+        const campaignId = item.dimensions.campaign_id
+        const campaignName = campaignMap.get(campaignId) || `TikTok Campaign ${campaignId}`
         const spend = Number(item.metrics?.spend || 0)
-        const conversions = Number(item.metrics?.conversions || 0)
+        const conversions = Number(item.metrics?.conversion || 0)
         const revenue = conversions * 8000 // มูลค่าต่อ Conversion สมมติของ TikTok
 
         return {
-          campaignId: item.dimensions.campaign_id,
-          campaignName: item.dimensions.campaign_name,
+          campaignId,
+          campaignName,
           status: 'ACTIVE',
           targeting: { locations: ['TH'] },
           content: {
-            adId: item.dimensions.ad_id,
-            adName: item.dimensions.ad_name,
+            adId: `ad-tiktok-${campaignId}`,
+            adName: `${campaignName} Ad`,
             performanceType: 'tiktok_feed'
           },
           metrics: {
@@ -257,8 +277,7 @@ export class CentralApiHub {
             conversions,
             revenue,
             reach: Math.round(Number(item.metrics?.impressions || 0) * 0.80)
-          },
-          metricDate: item.dimensions.stat_time_day
+          }
         }
       })
 
