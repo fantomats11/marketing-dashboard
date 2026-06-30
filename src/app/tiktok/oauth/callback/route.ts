@@ -23,7 +23,8 @@ export async function GET(request: Request) {
       body: JSON.stringify({
         app_id: appId,
         secret: secret,
-        auth_code: authCode
+        auth_code: authCode,
+        grant_type: 'authorization_code'
       })
     })
 
