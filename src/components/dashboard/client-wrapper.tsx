@@ -22,7 +22,7 @@ import {
   createShareableLink,
   syncAccounts
 } from '@/app/actions'
-
+import { logout } from '@/app/login/actions'
 import { AdAccount, AnalyticsItem, OfflineLead } from '@/types'
 
 interface ClientWrapperProps {
@@ -46,10 +46,13 @@ export default function DashboardClientWrapper({
 }: ClientWrapperProps) {
   const router = useRouter()
 
-  // --- Tab State ---
+  // --- Sidebar Active Tab ---
+  const [sidebarTab, setSidebarTab] = useState<'home' | 'report' | 'sources' | 'support' | 'user'>('report')
+
+  // --- Sub-Tab State inside Customer Report ---
   const [activeTab, setActiveTab] = useState<'analytics' | 'offline'>('analytics')
 
-  // --- 1. Global State Management (Localization & Preferences) ---
+  // --- Global State Management (Localization & Preferences) ---
   const [lang, setLang] = useState<Language>(initialPreferences?.language || 'TH')
   const [dateStart, setDateStart] = useState<string>(initialPreferences?.dateStart || '')
   const [dateEnd, setDateEnd] = useState<string>(initialPreferences?.dateEnd || '')
@@ -59,7 +62,6 @@ export default function DashboardClientWrapper({
     initialPreferences?.selectedPlatforms || ['facebook-ads', 'google-ads', 'tiktok-ads', 'tiktok-shop']
   )
 
-  // เมตริกเริ่มต้นที่ต้องการแสดงและจัดลำดับความสำคัญ (Prioritized Cards)
   const defaultPriority = ['spend', 'roas', 'cpa', 'ctr', 'conversions', 'clicks']
   const [priorityMetrics, setPriorityMetrics] = useState<string[]>(
     initialPreferences?.priorityMetrics || defaultPriority
@@ -77,7 +79,6 @@ export default function DashboardClientWrapper({
 
   const t = locales[lang]
 
-  // รายชื่อเมตริกทั้งหมดที่มีให้เลือก
   const allAvailableMetrics = [
     { key: 'spend', name: t.spend },
     { key: 'roas', name: t.roas },
@@ -88,10 +89,9 @@ export default function DashboardClientWrapper({
     { key: 'impressions', name: t.impressions },
     { key: 'revenue', name: t.revenue },
     { key: 'cpc', name: t.cpc },
-    { key: 'costPerConv', name: t.costPerConv },
   ]
 
-  // --- 2. Filter & Data Normalization Logic (Memoized) ---
+  // --- Filter & Data Normalization Logic (Memoized) ---
   const filteredData = useMemo(() => cachedAnalytics.filter(item => {
     const platform = item.connected_ad_accounts?.platform
     if (platform && !selectedPlatforms.includes(platform)) return false
@@ -123,7 +123,6 @@ export default function DashboardClientWrapper({
 
   const { totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, averageCtr, averageCpa, averageRoas, averageCpc } = aggregated
 
-  // ข้อมูลสถิติสำหรับการ์ด (Metric Cards Values)
   const metricValuesMap = useMemo<Record<string, { value: string; color: string }>>(() => ({
     spend: { value: `฿${totalSpend.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, color: '#8B5CF6' },
     roas: { value: `${averageRoas.toFixed(2)}x`, color: '#10B981' },
@@ -136,7 +135,7 @@ export default function DashboardClientWrapper({
     cpc: { value: `฿${averageCpc.toFixed(2)}`, color: '#06B6D4' },
   }), [totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, averageCtr, averageCpa, averageRoas, averageCpc])
 
-  // --- 3. Save Preferences Action ---
+  // --- Save Preferences ---
   const handleSavePreferences = async () => {
     setSaveStatus('Saving...')
     try {
@@ -149,13 +148,13 @@ export default function DashboardClientWrapper({
       })
       setSaveStatus('Saved!')
       setTimeout(() => setSaveStatus(''), 2000)
-    } catch (err) {
+    } catch {
       setSaveStatus('Failed')
       setTimeout(() => setSaveStatus(''), 2000)
     }
   }
 
-  // --- 4. Drill-down Table Row Toggle Logic ---
+  // --- Drill-down Table Row Toggle ---
   const toggleRow = (rowId: string) => {
     const newSet = new Set(expandedRows)
     if (newSet.has(rowId)) {
@@ -166,7 +165,7 @@ export default function DashboardClientWrapper({
     setExpandedRows(newSet)
   }
 
-  // --- 5. Prepare Chart Datasets ---
+  // --- Prepare Chart Datasets ---
   const dailyDataMap = new Map<string, { spend: number; revenue: number }>()
   filteredData.forEach(d => {
     const date = d.metric_date
@@ -199,24 +198,22 @@ export default function DashboardClientWrapper({
     value
   }))
 
-  // คำนวณยอดเงินตามวันในสัปดาห์ (Day of Week spend) แบบไดนามิก
   const dayOfWeekSpend = useMemo(() => {
-    const spendArr = [0, 0, 0, 0, 0, 0, 0] // 0 = จันทร์, ..., 6 = อาทิตย์
+    const spendArr = [0, 0, 0, 0, 0, 0, 0]
     filteredData.forEach(item => {
       if (!item.metric_date) return
       const date = new Date(item.metric_date)
-      const day = date.getDay() // 0 = Sunday, 1 = Monday, ...
+      const day = date.getDay()
       const idx = day === 0 ? 6 : day - 1
       spendArr[idx] += Number(item.metrics.spend || 0)
     })
-    // ถ้าไม่มีข้อมูลค่าใช้จ่ายจริงเลย ให้ใช้ mock values เป็น fallback
     if (spendArr.every(v => v === 0)) {
       return [450, 520, 490, 610, 890, 920, 580]
     }
     return spendArr
   }, [filteredData])
 
-  // --- 6. Hierarchical Data Grouping (Campaign -> Targeting -> Ad) ---
+  // --- Grouping (Campaign -> Target -> Ad) ---
   interface AdNode {
     id: string
     name: string
@@ -352,7 +349,6 @@ export default function DashboardClientWrapper({
     window.print()
   }
 
-  // --- 7. Secure Share URL Generator ---
   const handleToggleShareAccount = (accId: string) => {
     if (shareSelectedAccounts.includes(accId)) {
       setShareSelectedAccounts(shareSelectedAccounts.filter(id => id !== accId))
@@ -382,7 +378,6 @@ export default function DashboardClientWrapper({
       setCopySuccess(true)
       setTimeout(() => setCopySuccess(false), 2000)
     } catch {
-      // Fallback: สร้าง textarea ชั่วคราวสำหรับ copy
       const ta = document.createElement('textarea')
       ta.value = generatedShareUrl
       document.body.appendChild(ta)
@@ -394,478 +389,701 @@ export default function DashboardClientWrapper({
     }
   }, [generatedShareUrl])
 
+  // --- Layout Render Helper ---
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div className={readOnly ? '' : 'app-layout'}>
       
-      {/* 1. Global Controls Header */}
-      <header className="glass-card" style={{
-        margin: '20px 20px 10px 20px',
-        padding: '16px 24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderRadius: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <h1 className="gradient-text" style={{ fontSize: '20px', fontWeight: '800' }}>
-            {t.dashboardTitle}
-          </h1>
-          
-          {/* Tab Switcher (Only when NOT readOnly) */}
-          {!readOnly && (
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.25)', padding: '3px', borderRadius: '8px' }}>
+      {/* Sidebar Navigation (Hidden in readOnly preview) */}
+      {!readOnly && (
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <span className="gradient-text">Marketing Hub</span>
+          </div>
+          <ul className="sidebar-menu">
+            <li>
               <button 
-                onClick={() => setActiveTab('analytics')}
-                style={{
-                  padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
-                  background: activeTab === 'analytics' ? 'var(--primary)' : 'transparent',
-                  color: activeTab === 'analytics' ? 'white' : 'var(--text-muted)'
-                }}
-              >📊 {lang === 'TH' ? 'แดชบอร์ดหลัก' : 'Dashboard'}</button>
+                onClick={() => setSidebarTab('home')}
+                className={`sidebar-item ${sidebarTab === 'home' ? 'active' : ''}`}
+                style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left' }}
+              >
+                🏠 {lang === 'TH' ? 'หน้าหลัก' : 'Home'}
+              </button>
+            </li>
+            <li>
               <button 
-                onClick={() => setActiveTab('offline')}
-                style={{
-                  padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
-                  background: activeTab === 'offline' ? 'var(--primary)' : 'transparent',
-                  color: activeTab === 'offline' ? 'white' : 'var(--text-muted)'
-                }}
-              >🏠 {lang === 'TH' ? 'โมดูลออฟไลน์ & CRM' : 'Offline CRM'}</button>
-            </div>
-          )}
+                onClick={() => setSidebarTab('report')}
+                className={`sidebar-item ${sidebarTab === 'report' ? 'active' : ''}`}
+                style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left' }}
+              >
+                📊 {lang === 'TH' ? 'รายงานสถิติ' : 'Customer Report'}
+              </button>
+            </li>
+            <li>
+              <button 
+                onClick={() => setSidebarTab('sources')}
+                className={`sidebar-item ${sidebarTab === 'sources' ? 'active' : ''}`}
+                style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left' }}
+              >
+                🔌 {lang === 'TH' ? 'ช่องทางโฆษณา' : 'Sources'}
+              </button>
+            </li>
+            <li>
+              <button 
+                onClick={() => setSidebarTab('support')}
+                className={`sidebar-item ${sidebarTab === 'support' ? 'active' : ''}`}
+                style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left' }}
+              >
+                💬 {lang === 'TH' ? 'ฝ่ายสนับสนุน' : 'Support'}
+              </button>
+            </li>
+            <li>
+              <button 
+                onClick={() => setSidebarTab('user')}
+                className={`sidebar-item ${sidebarTab === 'user' ? 'active' : ''}`}
+                style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left' }}
+              >
+                👤 {lang === 'TH' ? 'โปรไฟล์ผู้ใช้' : 'User Settings'}
+              </button>
+            </li>
+          </ul>
 
-          {readOnly ? (
-            <span className="badge" style={{ fontSize: '11px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              👁️ {t.preview} (Read-only)
-            </span>
-          ) : null}
-        </div>
+          {/* Quick Sign Out at the Bottom */}
+          <form action={logout}>
+            <button type="submit" className="sidebar-item" style={{ width: '100%', border: 'none', background: 'transparent', color: '#EF4444', textAlign: 'left', marginTop: 'auto' }}>
+              🚪 {lang === 'TH' ? 'ออกจากระบบ' : 'Log Out'}
+            </button>
+          </form>
+        </aside>
+      )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* EN/TH Language Toggle */}
-          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', padding: '3px', borderRadius: '8px' }}>
-            <button 
-              onClick={() => setLang('TH')}
-              style={{
-                padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
-                background: lang === 'TH' ? 'var(--primary)' : 'transparent',
-                color: lang === 'TH' ? 'white' : 'var(--text-muted)'
-              }}
-            >TH</button>
-            <button 
-              onClick={() => setLang('EN')}
-              style={{
-                padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
-                background: lang === 'EN' ? 'var(--primary)' : 'transparent',
-                color: lang === 'EN' ? 'white' : 'var(--text-muted)'
-              }}
-            >EN</button>
+      {/* Main Content Area */}
+      <div className={readOnly ? '' : 'main-content'}>
+        
+        {/* Global Controls Header */}
+        <header className="glass-card" style={{
+          margin: '20px 20px 10px 20px',
+          padding: '16px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderRadius: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <h2 className="gradient-text" style={{ fontSize: '20px', fontWeight: '800' }}>
+              {sidebarTab === 'report' ? t.dashboardTitle : sidebarTab === 'sources' ? (lang === 'TH' ? 'การตั้งค่าช่องทางโฆษณา' : 'Sources Settings') : sidebarTab.toUpperCase()}
+            </h2>
+            
+            {readOnly && (
+              <span className="badge" style={{ fontSize: '11px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                👁️ {t.preview} (Read-only)
+              </span>
+            )}
           </div>
 
-          {!readOnly && (
-            <>
-              <button onClick={handleSavePreferences} className="btn-primary" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px' }}>
-                💾 {saveStatus || t.savePreferences}
-              </button>
-              
-              <button onClick={() => {
-                setShareSelectedAccounts(connectedAccounts.map(a => a.id))
-                setGeneratedShareUrl('')
-                setIsShareModalOpen(true)
-              }} className="btn-primary" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px', background: 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)' }}>
-                🔗 แชร์ลิงก์
-              </button>
-            </>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', padding: '3px', borderRadius: '8px' }}>
+              <button 
+                onClick={() => setLang('TH')}
+                style={{
+                  padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
+                  background: lang === 'TH' ? 'var(--primary)' : 'transparent',
+                  color: lang === 'TH' ? 'white' : 'var(--text-muted)'
+                }}
+              >TH</button>
+              <button 
+                onClick={() => setLang('EN')}
+                style={{
+                  padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
+                  background: lang === 'EN' ? 'var(--primary)' : 'transparent',
+                  color: lang === 'EN' ? 'white' : 'var(--text-muted)'
+                }}
+              >EN</button>
+            </div>
 
-          <button onClick={handlePrintPdf} className="btn-secondary" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px' }}>
-            📄 {t.exportPdf}
-          </button>
-        </div>
-      </header>
+            {!readOnly && sidebarTab === 'report' && (
+              <>
+                <button onClick={handleSavePreferences} className="btn-primary" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px' }}>
+                  💾 {saveStatus || t.savePreferences}
+                </button>
+                
+                <button onClick={() => {
+                  setShareSelectedAccounts(connectedAccounts.map(a => a.id))
+                  setGeneratedShareUrl('')
+                  setIsShareModalOpen(true)
+                }} className="btn-primary" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px', background: 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)' }}>
+                  🔗 แชร์ลิงก์
+                </button>
+              </>
+            )}
 
-      {/* Main Tab Render */}
-      {activeTab === 'offline' && !readOnly ? (
-        <div style={{ padding: '0 20px 20px 20px', flex: 1, display: 'flex' }}>
-          <OfflineTracker userId={userId} offlineLeads={offlineLeads} onRefresh={() => router.refresh()} />
-        </div>
-      ) : (
-        /* 2. Main Grid Layout for Analytics Dashboard */
-        <main className="container" style={{
-          flex: 1,
-          width: '100%',
-          maxWidth: '100%',
-          padding: '10px 20px 20px 20px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(12, 1fr)',
-          gap: '20px'
-        }}>
-          
-          {/* Left Side Settings (Only rendered when NOT readOnly) */}
-          {!readOnly && (
-            <div style={{ gridColumn: 'span 4', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
-              {/* Sync controls */}
-              <section className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <h2 style={{ fontSize: '16px', fontWeight: '700' }}>{t.syncControl}</h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                  {t.syncDesc}
+            <button onClick={handlePrintPdf} className="btn-secondary" style={{ width: 'auto', padding: '8px 16px', fontSize: '13px' }}>
+              📄 {t.exportPdf}
+            </button>
+          </div>
+        </header>
+
+        {/* ==========================================
+            VIEW 1: HOME PAGE
+            ========================================== */}
+        {sidebarTab === 'home' && !readOnly && (
+          <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <section className="glass-card" style={{ padding: '40px', textAlign: 'center' }}>
+              <h2 style={{ fontSize: '28px', fontWeight: '800', marginBottom: '12px' }}>
+                สวัสดีคุณแอดมิน ยินดีต้อนรับกลับเข้าสู่ <span className="gradient-text">Marketing Hub Portal</span>
+              </h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px', maxWidth: '600px', margin: '0 auto 24px auto', lineHeight: '1.6' }}>
+                รวบรวมและวิเคราะห์แคมเปญโฆษณาของคุณจาก 4 ช่องทางหลัก Meta Ads, Google Ads, TikTok Ads, และ TikTok Shop พร้อมวิเคราะห์การทำงานร่วมกับระบบเซลล์โครงการออฟไลน์แบบเรียลไทม์
+              </p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                <button onClick={() => setSidebarTab('report')} className="btn-primary" style={{ width: 'auto', padding: '10px 24px' }}>
+                  📊 เข้าสู่หน้ารายงานสถิติ
+                </button>
+                <button onClick={() => setSidebarTab('sources')} className="btn-secondary" style={{ width: 'auto', padding: '10px 24px' }}>
+                  🔌 ตั้งค่าเชื่อมโยงบัญชีโฆษณา
+                </button>
+              </div>
+            </section>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="glass-card" style={{ padding: '24px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '12px' }}>📊 สรุปยอดบัญชีเชื่อมต่อปัจจุบัน</h3>
+                <ul style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', color: 'var(--text-muted)', listStyle: 'none' }}>
+                  <li style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                    <span>Facebook Ads:</span>
+                    <strong style={{ color: 'white' }}>{connectedAccounts.filter(a=>a.platform==='facebook-ads').length} บัญชี</strong>
+                  </li>
+                  <li style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                    <span>Google Ads:</span>
+                    <strong style={{ color: 'white' }}>{connectedAccounts.filter(a=>a.platform==='google-ads').length} บัญชี</strong>
+                  </li>
+                  <li style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                    <span>TikTok Business Ads:</span>
+                    <strong style={{ color: 'white' }}>{connectedAccounts.filter(a=>a.platform==='tiktok-ads').length} บัญชี</strong>
+                  </li>
+                </ul>
+              </div>
+              <div className="glass-card" style={{ padding: '24px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '12px' }}>🛡️ ความปลอดภัยโดเมน</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', marginBottom: '12px' }}>
+                  มีโดเมนองค์กรทั้งหมด <strong style={{ color: 'white' }}>{allowedDomains.length} โดเมน</strong> ที่ได้รับอนุมัติสิทธิ์การล็อกอินเข้าระบบหลังบ้าน
                 </p>
-                <form action={syncAccounts}>
-                  <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span>⚡</span> {t.syncNow}
-                  </button>
-                </form>
-                <a href="/api/cron/sync?manual=true" target="_blank" className="btn-secondary" style={{ display: 'block', textAlign: 'center', padding: '10px', fontSize: '12px', textDecoration: 'none' }}>
-                  🌐 {t.openCronApi}
-                </a>
-              </section>
+                <button onClick={() => setSidebarTab('sources')} className="btn-secondary" style={{ width: 'auto', padding: '6px 16px', fontSize: '12px' }}>
+                  จัดการความปลอดภัย
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-              {/* Ad Accounts list */}
-              <section className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <h2 style={{ fontSize: '16px', fontWeight: '700' }}>{t.adAccounts} ({connectedAccounts.length})</h2>
-                  <form action={addTestAdAccount.bind(null, userId)}>
-                    <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '6px 12px', fontSize: '11px' }}>
-                      {t.addTestAccount}
-                    </button>
-                  </form>
+        {/* ==========================================
+            VIEW 2: CUSTOMER REPORT (Dashboard)
+            ========================================== */}
+        {sidebarTab === 'report' && (
+          <div style={{ width: '100%' }}>
+            
+            {/* Tab switch between analytics and offline CRM inside Customer Report */}
+            {!readOnly && (
+              <div style={{ display: 'flex', margin: '0 20px 15px 20px', background: 'rgba(0,0,0,0.25)', padding: '4px', borderRadius: '8px', width: 'fit-content' }}>
+                <button 
+                  onClick={() => setActiveTab('analytics')}
+                  style={{
+                    padding: '8px 16px', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer',
+                    background: activeTab === 'analytics' ? 'var(--primary)' : 'transparent',
+                    color: activeTab === 'analytics' ? 'white' : 'var(--text-muted)'
+                  }}
+                >📊 {lang === 'TH' ? 'สถิติโฆษณาข้ามแพลตฟอร์ม' : 'Cross-Platform Analytics'}</button>
+                <button 
+                  onClick={() => setActiveTab('offline')}
+                  style={{
+                    padding: '8px 16px', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer',
+                    background: activeTab === 'offline' ? 'var(--primary)' : 'transparent',
+                    color: activeTab === 'offline' ? 'white' : 'var(--text-muted)'
+                  }}
+                >🏠 {lang === 'TH' ? 'ตัววิเคราะห์วิถีออฟไลน์ & CRM' : 'Offline CRM Tracker'}</button>
+              </div>
+            )}
+
+            {activeTab === 'offline' && !readOnly ? (
+              <div style={{ padding: '0 20px 20px 20px', width: '100%' }}>
+                <OfflineTracker userId={userId} offlineLeads={offlineLeads} onRefresh={() => router.refresh()} />
+              </div>
+            ) : (
+              <main className="container" style={{
+                width: '100%',
+                maxWidth: '100%',
+                padding: '0 20px 20px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px'
+              }}>
+                
+                {/* Global Filter Toolbar */}
+                <section className="glass-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {/* Platform Switcher */}
+                    <div style={{ display: 'flex', background: 'rgba(0, 0, 0, 0.2)', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+                      {['facebook-ads', 'google-ads', 'tiktok-ads', 'tiktok-shop'].map((platform) => {
+                        const isActive = selectedPlatforms.includes(platform)
+                        return (
+                          <button
+                            key={platform}
+                            onClick={() => handlePlatformToggle(platform)}
+                            style={{
+                              padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
+                              background: isActive ? 'var(--primary)' : 'transparent',
+                              color: isActive ? 'white' : 'var(--text-muted)'
+                            }}
+                          >
+                            {formatPlatformName(platform)}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Date Ranges Picker */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <input 
+                        type="date" 
+                        value={dateStart} 
+                        onChange={(e) => setDateStart(e.target.value)} 
+                        className="input-field" 
+                        style={{ width: 'auto', padding: '6px 10px', fontSize: '11px' }} 
+                      />
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>to</span>
+                      <input 
+                        type="date" 
+                        value={dateEnd} 
+                        onChange={(e) => setDateEnd(e.target.value)} 
+                        className="input-field" 
+                        style={{ width: 'auto', padding: '6px 10px', fontSize: '11px' }} 
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      placeholder={t.searchPlaceholder}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="input-field"
+                      style={{ flex: 1, minWidth: '200px', padding: '8px 12px', fontSize: '12px' }}
+                    />
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{lang === 'TH' ? 'ปรับสถิติหลัก:' : 'Metrics:'}</span>
+                      {allAvailableMetrics.map(m => {
+                        const isActive = priorityMetrics.includes(m.key)
+                        return (
+                          <button
+                            key={m.key}
+                            onClick={() => handleTogglePriority(m.key)}
+                            style={{
+                              padding: '2px 8px', borderRadius: '9999px', border: '1px solid', fontSize: '10px', cursor: 'pointer',
+                              borderColor: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
+                              background: isActive ? 'rgba(139,92,246,0.1)' : 'transparent',
+                              color: isActive ? 'white' : 'var(--text-muted)'
+                            }}
+                          >
+                            {m.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </section>
+
+                {/* Customizable Metric Cards Grid */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+                  gap: '15px' 
+                }}>
+                  {priorityMetrics.map((key) => {
+                    const matched = allAvailableMetrics.find(m => m.key === key)
+                    if (!matched) return null
+                    const item = metricValuesMap[key]
+                    return (
+                      <div key={key} className="glass-card" style={{ padding: '16px', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: item.color }}></div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>{matched.name}</div>
+                        <div style={{ fontSize: '20px', fontWeight: '800', marginTop: '6px', color: 'white' }}>{item.value}</div>
+                      </div>
+                    )
+                  })}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
-                  {connectedAccounts.length === 0 ? (
-                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '15px' }}>
-                      ยังไม่มีการเชื่อมต่อบัญชีโฆษณา
-                    </p>
-                  ) : (
-                    connectedAccounts.map((acc) => (
-                      <div key={acc.id} style={{
-                        background: 'rgba(255, 255, 255, 0.02)',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                        padding: '10px',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '6px'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span className="badge" style={{ 
-                            fontSize: '9px', 
-                            background: acc.platform === 'google-ads' ? '#EAB308' : acc.platform === 'facebook-ads' ? '#2563EB' : acc.platform === 'tiktok-ads' ? '#10B981' : '#EC4899', 
-                            color: 'white',
-                            padding: '2px 6px'
-                          }}>
-                            {acc.platform.replace('-ads', '').toUpperCase()}
-                          </span>
+                {/* SVG Visualizations Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '20px' }}>
+                  <div className="glass-card" style={{ gridColumn: 'span 8', padding: '20px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>{t.dailyCompare}</h3>
+                    <DualAxisLineChart data={lineChartData} label1={t.spend} label2={t.roas} />
+                  </div>
+
+                  <div className="glass-card" style={{ gridColumn: 'span 4', padding: '20px', display: 'flex', flexDirection: 'column' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>{t.budgetBreakdown}</h3>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                      <BudgetDonutChart data={donutChartData} />
+                    </div>
+                  </div>
+
+                  <div className="glass-card" style={{ gridColumn: 'span 4', padding: '20px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>{t.funnelTitle}</h3>
+                    <UserJourneyFunnel data={{
+                      impressions: totalImpressions,
+                      clicks: totalClicks,
+                      conversions: totalConversions
+                    }} />
+                  </div>
+
+                  <div className="glass-card" style={{ gridColumn: 'span 8', padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                    <div>
+                      <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>{t.hourlyPerformance}</h4>
+                      <HourlyPerformanceAreaChart />
+                    </div>
+                    <div>
+                      <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>{t.dayOfWeek}</h4>
+                      <DayOfWeekBarChart data={dayOfWeekSpend} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hierarchical Drill-down Data Table */}
+                <section className="glass-card" style={{ padding: '20px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '14px' }}>
+                    {lang === 'TH' ? 'เจาะลึกผลลัพธ์รายโครงสร้าง' : 'Deep Drill-Down Results'}
+                  </h3>
+
+                  <div style={{ overflowX: 'auto', width: '100%' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '10px 6px' }}>{t.campaign} / {t.targeting} / {t.adContent}</th>
+                          <th style={{ padding: '10px 6px' }}>{t.status}</th>
+                          <th style={{ padding: '10px 6px', textAlign: 'right' }}>{t.spend}</th>
+                          <th style={{ padding: '10px 6px', textAlign: 'right' }}>{t.clicks} (CTR)</th>
+                          <th style={{ padding: '10px 6px', textAlign: 'right' }}>{t.conversions} (CPA)</th>
+                          <th style={{ padding: '10px 6px', textAlign: 'right' }}>ROAS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {campaigns.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} style={{ textAlign: 'center', padding: '25px', color: 'var(--text-muted)' }}>
+                              {t.emptyAnalytics}
+                            </td>
+                          </tr>
+                        ) : (
+                          campaigns.map(camp => {
+                            const isCampExpanded = expandedRows.has(camp.id)
+                            const campRoas = averageRoas
+
+                            return (
+                              <React.Fragment key={camp.id}>
+                                <tr 
+                                  onClick={() => toggleRow(camp.id)}
+                                  style={{ 
+                                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                    cursor: 'pointer',
+                                    background: isCampExpanded ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
+                                  }}
+                                >
+                                  <td style={{ padding: '12px 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ transform: isCampExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', fontSize: '9px', transition: 'transform 0.2s' }}>▶</span>
+                                    <span className="badge" style={{ 
+                                      fontSize: '8px', 
+                                      background: getPlatformColor(camp.platform),
+                                      color: 'white',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {formatPlatformName(camp.platform)}
+                                    </span>
+                                    <strong>{camp.name}</strong>
+                                  </td>
+                                  <td style={{ padding: '12px 6px' }}>
+                                    {camp.status === 'ACTIVE' ? (
+                                      <span className="badge badge-success" style={{ fontSize: '10px' }}>{t.active}</span>
+                                    ) : (
+                                      <span className="badge badge-danger" style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', border: 'none' }}>{t.inactive}</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>฿{camp.spend.toLocaleString()}</td>
+                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>{camp.clicks.toLocaleString()}</td>
+                                  <td style={{ padding: '12px 6px', textAlign: 'right' }}>{camp.conversions.toLocaleString()}</td>
+                                  <td style={{ padding: '12px 6px', textAlign: 'right', fontWeight: 'bold' }}>{campRoas > 0 ? `${campRoas.toFixed(1)}x` : '-'}</td>
+                                </tr>
+
+                                {isCampExpanded && camp.targets.map(target => {
+                                  const isTargetExpanded = expandedRows.has(target.id)
+
+                                  return (
+                                    <React.Fragment key={target.id}>
+                                      <tr 
+                                        onClick={() => toggleRow(target.id)}
+                                        style={{ 
+                                          borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                          cursor: 'pointer',
+                                          background: 'rgba(255,255,255,0.01)'
+                                        }}
+                                      >
+                                        <td style={{ padding: '8px 6px 8px 30px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span style={{ transform: isTargetExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', fontSize: '8px', transition: 'transform 0.2s' }}>▶</span>
+                                          <span style={{ color: '#8B5CF6' }}>🎯</span>
+                                          <span style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>{target.targetingSpec}</span>
+                                        </td>
+                                        <td style={{ padding: '8px 6px' }}>-</td>
+                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>฿{target.spend.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>{target.clicks.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>{target.conversions.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
+                                      </tr>
+
+                                      {isTargetExpanded && target.ads.map(ad => (
+                                        <tr 
+                                          key={ad.id} 
+                                          style={{ 
+                                            borderBottom: '1px solid rgba(255,255,255,0.02)',
+                                            background: 'rgba(0, 0, 0, 0.15)'
+                                          }}
+                                        >
+                                          <td style={{ padding: '6px 6px 6px 60px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {ad.creativeUrl ? (
+                                              <img src={ad.creativeUrl} alt="creative" style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '4px' }} />
+                                            ) : (
+                                              <span>🖼️</span>
+                                            )}
+                                            <span style={{ fontSize: '12px' }}>{ad.name}</span>
+                                          </td>
+                                          <td style={{ padding: '6px 6px', fontSize: '11px', color: 'var(--text-muted)' }}>ID: {ad.id}</td>
+                                          <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>฿{ad.spend.toLocaleString()}</td>
+                                          <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>
+                                            {ad.clicks.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({(ad.ctr * 100).toFixed(1)}%)</span>
+                                          </td>
+                                          <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>
+                                            {ad.conversions.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(${ad.cpa.toFixed(1)})</span>
+                                          </td>
+                                          <td style={{ padding: '6px 6px', textAlign: 'right' }}>-</td>
+                                        </tr>
+                                      ))}
+                                    </React.Fragment>
+                                  )
+                                })}
+                              </React.Fragment>
+                            )
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginTop: '16px' }}>
+                    <span>{t.historicalDataNotice}</span>
+                    <span suppressHydrationWarning>{t.lastUpdated}: {cachedAnalytics.length > 0 ? new Date(cachedAnalytics[0].updated_at).toLocaleTimeString() : 'N/A'}</span>
+                  </div>
+                </section>
+              </main>
+            )}
+          </div>
+        )}
+
+        {/* ==========================================
+            VIEW 3: SOURCES PAGE (Ad Accounts, Allowed Domains & Sync)
+            ========================================== */}
+        {sidebarTab === 'sources' && !readOnly && (
+          <div className="container" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            {/* Platform Connections Status Summary */}
+            <section className="glass-card" style={{ padding: '24px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '14px' }}>📡 สถานะช่องทางการเชื่อมต่อ (API Integration Channels)</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                {['facebook-ads', 'google-ads', 'tiktok-ads', 'tiktok-shop'].map(platform => {
+                  const accountsCount = connectedAccounts.filter(a => a.platform === platform).length
+                  const hasConnection = accountsCount > 0
+                  return (
+                    <div key={platform} style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                      padding: '16px',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="badge" style={{ background: getPlatformColor(platform), color: 'white', fontSize: '10px' }}>
+                          {formatPlatformName(platform)}
+                        </span>
+                        <span style={{ fontSize: '11px', color: hasConnection ? '#10B981' : 'var(--text-muted)' }}>
+                          {hasConnection ? '● Connected' : '○ Disconnected'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                        จำนวนบัญชีโฆษณา: <strong style={{ color: 'white' }}>{accountsCount}</strong>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '20px' }}>
+              {/* Left Column: Accounts & Domains management (8 Columns) */}
+              <div style={{ gridColumn: 'span 8', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Connected Ad Accounts List */}
+                <section className="glass-card" style={{ padding: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                    <h3 style={{ fontSize: '16px', fontWeight: '800' }}>🔌 บัญชีโฆษณาที่เชื่อมต่อ (Connected Ad Accounts)</h3>
+                    <form action={addTestAdAccount.bind(null, userId)}>
+                      <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '8px 16px', fontSize: '12px' }}>
+                        + {t.addTestAccount}
+                      </button>
+                    </form>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '350px', overflowY: 'auto' }}>
+                    {connectedAccounts.length === 0 ? (
+                      <p style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '30px' }}>
+                        ยังไม่มีการเชื่อมต่อบัญชีโฆษณาในโปรไฟล์นี้
+                      </p>
+                    ) : (
+                      connectedAccounts.map((acc) => (
+                        <div key={acc.id} style={{
+                          background: 'rgba(255, 255, 255, 0.02)',
+                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                          padding: '14px 18px',
+                          borderRadius: '10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <span className="badge" style={{ background: getPlatformColor(acc.platform), color: 'white', fontSize: '9px' }}>
+                                {formatPlatformName(acc.platform)}
+                              </span>
+                              <strong style={{ fontSize: '14px', color: 'white' }}>{acc.account_name}</strong>
+                            </div>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>ID: {acc.account_id}</span>
+                          </div>
+                          
                           <form action={deleteAdAccount.bind(null, acc.id)}>
-                            <button type="submit" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '11px' }}>
-                              ลบ
+                            <button type="submit" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
+                              ลบการเชื่อมต่อ
                             </button>
                           </form>
                         </div>
-                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{acc.account_name}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>ID: {acc.account_id}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-
-              {/* Allowed Domains management */}
-              <section className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <h2 style={{ fontSize: '16px', fontWeight: '700' }}>{t.domainSecurity}</h2>
-                <form action={addAllowedDomain} style={{ display: 'flex', gap: '6px' }}>
-                  <input name="domain" type="text" placeholder={t.domainInputPlaceholder} required className="input-field" style={{ padding: '8px 12px', fontSize: '13px' }} />
-                  <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '8px 12px', fontSize: '13px', whiteSpace: 'nowrap' }}>{t.add}</button>
-                </form>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto' }}>
-                  {allowedDomains.map((d: any) => (
-                    <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', padding: '6px 10px', borderRadius: '6px', fontSize: '12px' }}>
-                      <span>{d.domain}</span>
-                      <form action={deleteAllowedDomain.bind(null, d.id)}>
-                        <button type="submit" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '11px' }}>ลบ</button>
-                      </form>
-                  </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* Right Side Dashboard View (Takes full 12 columns if readOnly) */}
-          <div style={{ gridColumn: readOnly ? 'span 12' : 'span 8', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            
-            {/* Global Filter Toolbar */}
-            <section className="glass-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
-                {/* Platform Switcher */}
-                <div style={{ display: 'flex', background: 'rgba(0, 0, 0, 0.2)', padding: '4px', borderRadius: '8px', gap: '4px' }}>
-                  {['facebook-ads', 'google-ads', 'tiktok-ads', 'tiktok-shop'].map((platform) => {
-                    const isActive = selectedPlatforms.includes(platform)
-                    return (
-                      <button
-                        key={platform}
-                        onClick={() => handlePlatformToggle(platform)}
-                        style={{
-                          padding: '6px 12px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer',
-                          background: isActive ? 'var(--primary)' : 'transparent',
-                          color: isActive ? 'white' : 'var(--text-muted)'
-                        }}
-                      >
-                        {platform.replace('-ads', '').toUpperCase()}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {/* Date Ranges Picker */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input 
-                    type="date" 
-                    value={dateStart} 
-                    onChange={(e) => setDateStart(e.target.value)} 
-                    className="input-field" 
-                    style={{ width: 'auto', padding: '6px 10px', fontSize: '11px' }} 
-                  />
-                  <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>to</span>
-                  <input 
-                    type="date" 
-                    value={dateEnd} 
-                    onChange={(e) => setDateEnd(e.target.value)} 
-                    className="input-field" 
-                    style={{ width: 'auto', padding: '6px 10px', fontSize: '11px' }} 
-                  />
-                </div>
-              </div>
-
-              {/* Campaign Search Filter & Customizer Checkboxes */}
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <input
-                  type="text"
-                  placeholder={t.searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="input-field"
-                  style={{ flex: 1, minWidth: '200px', padding: '8px 12px', fontSize: '12px' }}
-                />
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{lang === 'TH' ? 'ปรับสถิติหลัก:' : 'Metrics:'}</span>
-                  {allAvailableMetrics.map(m => {
-                    const isActive = priorityMetrics.includes(m.key)
-                    return (
-                      <button
-                        key={m.key}
-                        onClick={() => handleTogglePriority(m.key)}
-                        style={{
-                          padding: '2px 8px', borderRadius: '9999px', border: '1px solid', fontSize: '10px', cursor: 'pointer',
-                          borderColor: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
-                          background: isActive ? 'rgba(139,92,246,0.1)' : 'transparent',
-                          color: isActive ? 'white' : 'var(--text-muted)'
-                        }}
-                      >
-                        {m.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </section>
-
-            {/* Customizable Metric Cards Grid */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-              gap: '15px' 
-            }}>
-              {priorityMetrics.map((key) => {
-                const matched = allAvailableMetrics.find(m => m.key === key)
-                if (!matched) return null
-                const item = metricValuesMap[key]
-                return (
-                  <div key={key} className="glass-card" style={{ padding: '16px', position: 'relative', overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: item.color }}></div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>{matched.name}</div>
-                    <div style={{ fontSize: '20px', fontWeight: '800', marginTop: '6px', color: 'white' }}>{item.value}</div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* SVG Visualizations Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '20px' }}>
-              <div className="glass-card" style={{ gridColumn: 'span 8', padding: '20px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>{t.dailyCompare}</h3>
-                <DualAxisLineChart data={lineChartData} label1={t.spend} label2={t.roas} />
-              </div>
-
-              <div className="glass-card" style={{ gridColumn: 'span 4', padding: '20px', display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>{t.budgetBreakdown}</h3>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
-                  <BudgetDonutChart data={donutChartData} />
-                </div>
-              </div>
-
-              <div className="glass-card" style={{ gridColumn: 'span 4', padding: '20px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '14px' }}>{t.funnelTitle}</h3>
-                <UserJourneyFunnel data={{
-                  impressions: totalImpressions,
-                  clicks: totalClicks,
-                  conversions: totalConversions
-                }} />
-              </div>
-
-              <div className="glass-card" style={{ gridColumn: 'span 8', padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <div>
-                  <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>{t.hourlyPerformance}</h4>
-                  <HourlyPerformanceAreaChart />
-                </div>
-                <div>
-                  <h4 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '10px' }}>{t.dayOfWeek}</h4>
-                  <DayOfWeekBarChart data={dayOfWeekSpend} />
-                </div>
-              </div>
-            </div>
-
-            {/* Hierarchical Drill-down Data Table */}
-            <section className="glass-card" style={{ padding: '20px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '14px' }}>
-                {lang === 'TH' ? 'เจาะลึกผลลัพธ์รายโครงสร้าง' : 'Deep Drill-Down Results'}
-              </h3>
-
-              <div style={{ overflowX: 'auto', width: '100%' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '10px 6px' }}>{t.campaign} / {t.targeting} / {t.adContent}</th>
-                      <th style={{ padding: '10px 6px' }}>{t.status}</th>
-                      <th style={{ padding: '10px 6px', textAlign: 'right' }}>{t.spend}</th>
-                      <th style={{ padding: '10px 6px', textAlign: 'right' }}>{t.clicks} (CTR)</th>
-                      <th style={{ padding: '10px 6px', textAlign: 'right' }}>{t.conversions} (CPA)</th>
-                      <th style={{ padding: '10px 6px', textAlign: 'right' }}>ROAS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {campaigns.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', padding: '25px', color: 'var(--text-muted)' }}>
-                          {t.emptyAnalytics}
-                        </td>
-                      </tr>
-                    ) : (
-                      campaigns.map(camp => {
-                        const isCampExpanded = expandedRows.has(camp.id)
-                        const campRoas = averageRoas
-
-                        return (
-                          <React.Fragment key={camp.id}>
-                            {/* Campaign Level */}
-                            <tr 
-                              onClick={() => toggleRow(camp.id)}
-                              style={{ 
-                                borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                cursor: 'pointer',
-                                background: isCampExpanded ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
-                              }}
-                            >
-                              <td style={{ padding: '12px 6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ transform: isCampExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', fontSize: '9px', transition: 'transform 0.2s' }}>▶</span>
-                                <span className="badge" style={{ 
-                                  fontSize: '8px', 
-                                  background: camp.platform === 'google-ads' ? '#EAB308' : camp.platform === 'facebook-ads' ? '#2563EB' : '#10B981',
-                                  color: 'white',
-                                  padding: '1px 5px',
-                                  borderRadius: '4px'
-                                }}>
-                                  {camp.platform.replace('-ads', '').toUpperCase()}
-                                </span>
-                                <strong>{camp.name}</strong>
-                              </td>
-                              <td style={{ padding: '12px 6px' }}>
-                                {camp.status === 'ACTIVE' ? (
-                                  <span className="badge badge-success" style={{ fontSize: '10px' }}>{t.active}</span>
-                                ) : (
-                                  <span className="badge badge-danger" style={{ fontSize: '10px', background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', border: 'none' }}>{t.inactive}</span>
-                                )}
-                              </td>
-                              <td style={{ padding: '12px 6px', textAlign: 'right' }}>${camp.spend.toLocaleString()}</td>
-                              <td style={{ padding: '12px 6px', textAlign: 'right' }}>{camp.clicks.toLocaleString()}</td>
-                              <td style={{ padding: '12px 6px', textAlign: 'right' }}>{camp.conversions.toLocaleString()}</td>
-                              <td style={{ padding: '12px 6px', textAlign: 'right', fontWeight: 'bold' }}>{campRoas > 0 ? `${campRoas.toFixed(1)}x` : '-'}</td>
-                            </tr>
-
-                            {/* Target Level */}
-                            {isCampExpanded && camp.targets.map(target => {
-                              const isTargetExpanded = expandedRows.has(target.id)
-
-                              return (
-                                <React.Fragment key={target.id}>
-                                  <tr 
-                                    onClick={() => toggleRow(target.id)}
-                                    style={{ 
-                                      borderBottom: '1px solid rgba(255,255,255,0.03)',
-                                      cursor: 'pointer',
-                                      background: 'rgba(255,255,255,0.01)'
-                                    }}
-                                  >
-                                    <td style={{ padding: '8px 6px 8px 30px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <span style={{ transform: isTargetExpanded ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', fontSize: '8px', transition: 'transform 0.2s' }}>▶</span>
-                                      <span style={{ color: '#8B5CF6' }}>🎯</span>
-                                      <span style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>{target.targetingSpec}</span>
-                                    </td>
-                                    <td style={{ padding: '8px 6px' }}>-</td>
-                                    <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>${target.spend.toLocaleString()}</td>
-                                    <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>{target.clicks.toLocaleString()}</td>
-                                    <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>{target.conversions.toLocaleString()}</td>
-                                    <td style={{ padding: '8px 6px', textAlign: 'right', color: 'var(--text-muted)' }}>-</td>
-                                  </tr>
-
-                                  {/* Ad Level */}
-                                  {isTargetExpanded && target.ads.map(ad => (
-                                    <tr 
-                                      key={ad.id} 
-                                      style={{ 
-                                        borderBottom: '1px solid rgba(255,255,255,0.02)',
-                                        background: 'rgba(0, 0, 0, 0.15)'
-                                      }}
-                                    >
-                                      <td style={{ padding: '6px 6px 6px 60px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {ad.creativeUrl ? (
-                                          <img src={ad.creativeUrl} alt="creative" style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '4px' }} />
-                                        ) : (
-                                          <span>🖼️</span>
-                                        )}
-                                        <span style={{ fontSize: '12px' }}>{ad.name}</span>
-                                      </td>
-                                      <td style={{ padding: '6px 6px', fontSize: '11px', color: 'var(--text-muted)' }}>ID: {ad.id}</td>
-                                      <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>${ad.spend.toLocaleString()}</td>
-                                      <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>
-                                        {ad.clicks.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({(ad.ctr * 100).toFixed(1)}%)</span>
-                                      </td>
-                                      <td style={{ padding: '6px 6px', textAlign: 'right', fontSize: '12px' }}>
-                                        {ad.conversions.toLocaleString()} <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(${ad.cpa.toFixed(1)})</span>
-                                      </td>
-                                      <td style={{ padding: '6px 6px', textAlign: 'right' }}>-</td>
-                                    </tr>
-                                  ))}
-                                </React.Fragment>
-                              )
-                            })}
-                          </React.Fragment>
-                        )
-                      })
+                      ))
                     )}
-                  </tbody>
-                </table>
+                  </div>
+                </section>
+
+                {/* Allowed Domains Security */}
+                <section className="glass-card" style={{ padding: '24px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '8px' }}>🛡️ ความปลอดภัยโดเมนล็อกอิน (Domain Security Access)</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
+                    จำกัดการล็อกอินเข้าระบบหลังบ้านเฉพาะผู้ใช้งานที่มีโดเมนอีเมลบริษัทตรงกับที่ลงทะเบียนไว้ด้านล่างนี้
+                  </p>
+                  
+                  <form action={addAllowedDomain} style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                    <input name="domain" type="text" placeholder={t.domainInputPlaceholder} required className="input-field" style={{ padding: '10px 14px', fontSize: '13px' }} />
+                    <button type="submit" className="btn-primary" style={{ width: 'auto', padding: '10px 20px', fontSize: '13px', whiteSpace: 'nowrap' }}>เพิ่มโดเมน</button>
+                  </form>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
+                    {allowedDomains.map((d: any) => (
+                      <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.04)', padding: '10px 14px', borderRadius: '8px', fontSize: '13px' }}>
+                        <span>{d.domain}</span>
+                        <form action={deleteAllowedDomain.bind(null, d.id)}>
+                          <button type="submit" style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '11px' }}>ลบ</button>
+                        </form>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginTop: '16px' }}>
-                <span>{t.historicalDataNotice}</span>
-                <span suppressHydrationWarning>{t.lastUpdated}: {cachedAnalytics.length > 0 ? new Date(cachedAnalytics[0].updated_at).toLocaleTimeString() : 'N/A'}</span>
+              {/* Right Column: Sync controls (4 Columns) */}
+              <div style={{ gridColumn: 'span 4', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <section className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800' }}>⚡ ซิงก์ข้อมูลแคมเปญ</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                    กดปุ่มนี้เพื่อดึงข้อมูลสถิติล่าสุดจาก Meta, Google, TikTok เข้ามาคำนวณและเก็บไว้ในระบบฐานข้อมูลแคชความไวสูง
+                  </p>
+                  
+                  <form action={syncAccounts}>
+                    <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <span>⚡</span> {t.syncNow}
+                    </button>
+                  </form>
+                  
+                  <a href="/api/cron/sync?manual=true" target="_blank" className="btn-secondary" style={{ display: 'block', textAlign: 'center', padding: '10px', fontSize: '12px', textDecoration: 'none' }}>
+                    เปิด Cron API Endpoint 🌐
+                  </a>
+                </section>
               </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ==========================================
+            VIEW 4: SUPPORT PAGE
+            ========================================== */}
+        {sidebarTab === 'support' && !readOnly && (
+          <div className="container">
+            <section className="glass-card" style={{ padding: '40px', textAlign: 'center' }}>
+              <span style={{ fontSize: '48px', display: 'block', marginBottom: '16px' }}>💬</span>
+              <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '10px' }}>ฝ่ายบริการลูกค้าและซัพพอร์ต (Support Desk)</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '13px', maxWidth: '480px', margin: '0 auto', lineHeight: '1.6' }}>
+                ระบบซัพพอร์ตและจองสิทธิ์ปรึกษาสำหรับวิเคราะห์แคมเปญโฆษณาอสังหาริมทรัพย์และอีคอมเมิร์ซ ยินดีให้บริการผู้พัฒนาและแอดมินทุกวันตลอด 24 ชั่วโมง
+              </p>
+              <button className="btn-primary" style={{ width: 'auto', padding: '10px 24px', marginTop: '20px' }}>
+                ส่งข้อความหาทีมงาน
+              </button>
             </section>
           </div>
-        </main>
-      )}
+        )}
+
+        {/* ==========================================
+            VIEW 5: USER SETTINGS PAGE
+            ========================================== */}
+        {sidebarTab === 'user' && !readOnly && (
+          <div className="container" style={{ maxWidth: '600px' }}>
+            <section className="glass-card" style={{ padding: '30px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>
+                  👤
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Admin Account</h3>
+                  <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>สิทธิ์การเข้าใช้งาน: ผู้ดูแลระบบสูงสุด (Super Admin)</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '16px', fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>ID บัญชีปัจจุบัน:</span>
+                  <strong style={{ fontFamily: 'var(--font-mono)' }}>{userId}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>ภาษาใช้งานเริ่มต้น:</span>
+                  <strong>{lang === 'TH' ? 'ภาษาไทย (TH)' : 'English (EN)'}</strong>
+                </div>
+              </div>
+
+              <form action={logout}>
+                <button type="submit" className="btn-primary" style={{ background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)', boxShadow: '0 4px 14px 0 rgba(239, 68, 68, 0.25)' }}>
+                  🚪 ออกจากระบบรักษาความปลอดภัย (Log Out)
+                </button>
+              </form>
+            </section>
+          </div>
+        )}
+
+      </div>
 
       {/* --- 8. Secure Share Modal Overlay --- */}
       {isShareModalOpen && (
@@ -944,7 +1162,7 @@ export default function DashboardClientWrapper({
             background: white !important;
             color: black !important;
           }
-          header, section:nth-of-type(1), form, .btn-primary, .btn-secondary, button {
+          header, section:nth-of-type(1), form, .btn-primary, .btn-secondary, button, .sidebar {
             display: none !important;
           }
           .glass-card {
