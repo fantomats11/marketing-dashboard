@@ -34,7 +34,7 @@ export class CentralApiHub {
       case 'facebook-ads':
         return await this.fetchMeta(accountId, metadata)
       case 'google-ads':
-        return this.fetchGoogle(accountId, metadata)
+        return await this.fetchGoogle(accountId, metadata)
       case 'tiktok-ads':
         return this.fetchTikTokAds(accountId, metadata)
       case 'tiktok-shop':
@@ -45,9 +45,12 @@ export class CentralApiHub {
   }
 
   private static async fetchMeta(accountId: string, metadata: any): Promise<NormalizedMarketingData[]> {
-    // 🔒 ลิงก์ API โทเค็นจริงที่ได้รับจากผู้ใช้งาน (ถ้าในตาราง metadata ไม่มี ให้ใช้ตัวหลักนี้เป็น fallback)
-    const defaultToken = "EAANtIxP2OTkBR9wEJg36bVjxc0uS7I2zCB41iDRV8c1qVHKkfxFmJyK7Ab4WZC0SqXnfb5P1FfDu6YpypoZCiOR1LZB8ZCTtVya86a38owmz4JVp6Fo8qM1rrbZCnFTuksrSkKSODIKIPNNWTWj1ViqqgRi8FEicg0mGoLpeccfCaNcKlZBx6ojy7bDbeLcz9tudbDwV9B0XIR3V9ZC"
-    const accessToken = metadata?.access_token || process.env.META_ACCESS_TOKEN || defaultToken
+    const accessToken = metadata?.access_token || process.env.META_ACCESS_TOKEN
+    
+    if (!accessToken) {
+      console.warn(`[Meta Ads] Missing access token for account ${accountId}. Fallback to mock data.`)
+      return this.getMetaMockData(accountId)
+    }
     
     // ดึงสถิติรายวันย้อนหลังของเดือนนี้ (time_increment=1) เพื่อนำไปสร้างกราฟเส้นรายวันและวันในสัปดาห์ได้ตรงจริง
     const url = `https://graph.facebook.com/v25.0/act_${accountId}/insights?` + new URLSearchParams({
@@ -140,12 +143,101 @@ export class CentralApiHub {
     ]
   }
 
-  private static fetchGoogle(accountId: string, metadata: any): NormalizedMarketingData[] {
-    const limit = metadata?.ad_spend_limit || 5000
+  private static async fetchGoogle(accountId: string, metadata: any): Promise<NormalizedMarketingData[]> {
+    const clientId = metadata?.client_id || process.env.GOOGLE_CLIENT_ID
+    const clientSecret = metadata?.client_secret || process.env.GOOGLE_CLIENT_SECRET
+    const refreshToken = metadata?.refresh_token || process.env.GOOGLE_REFRESH_TOKEN
+    const devToken = metadata?.developer_token || process.env.GOOGLE_DEVELOPER_TOKEN
+    const customerId = accountId.replace(/-/g, '') // นำ Customer ID แบบไม่มีขีดคั่น
+
+    if (!clientId || !clientSecret || !refreshToken || !devToken) {
+      console.warn(`[Google Ads] Missing credentials for account ${accountId}. Fallback to mock data.`)
+      return this.getGoogleMockData(accountId)
+    }
+
+    try {
+      // 1. นำ Refresh Token แลกเปลี่ยน Access Token
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token'
+        })
+      })
+
+      const tokenJson = await tokenRes.json()
+      const accessToken = tokenJson.access_token
+
+      if (!accessToken) {
+        throw new Error('Google OAuth token exchange failed')
+      }
+
+      // 2. เรียกค้นข้อมูลโฆษณาใน Google Ads (ดึงช่วงเดือนปัจจุบัน)
+      const query = `
+        SELECT 
+          campaign.id, campaign.name, campaign.status,
+          metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value
+        FROM campaign
+        WHERE segments.date DURING THIS_MONTH
+      `
+
+      // ใช้เวอร์ชัน v17 ในการสืบค้นข้อมูล
+      const url = `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:search`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'developer-token': devToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ query })
+      })
+
+      const json = await res.json()
+
+      if (json.error || !json.results) {
+        throw new Error(json.error?.message || 'Empty or invalid response from Google Ads')
+      }
+
+      return json.results.map((row: any) => {
+        const spend = Number(row.metrics?.costMicros || 0) / 1000000
+        const conversions = Number(row.metrics?.conversions || 0)
+        const revenue = Number(row.metrics?.conversionsValue || 0)
+
+        return {
+          campaignId: row.campaign.id,
+          campaignName: row.campaign.name,
+          status: row.campaign.status === 'ENABLED' ? 'ACTIVE' : 'PAUSED',
+          targeting: { locations: ['TH'] },
+          content: {
+            adId: `ad-google-${row.campaign.id}`,
+            adName: `${row.campaign.name} Ad Group`,
+            performanceType: 'search'
+          },
+          metrics: {
+            spend,
+            impressions: Number(row.metrics?.impressions || 0),
+            clicks: Number(row.metrics?.clicks || 0),
+            conversions,
+            revenue
+          }
+        }
+      })
+
+    } catch (err: any) {
+      console.warn(`[Google Ads API Connection Warning] Fallback to mock:`, err.message || err)
+      return this.getGoogleMockData(accountId)
+    }
+  }
+
+  private static getGoogleMockData(accountId: string): NormalizedMarketingData[] {
     return [
       {
         campaignId: `camp-gg-201-${accountId}`,
-        campaignName: 'Google Search - High Intent Keywords',
+        campaignName: 'Google Search - High Intent Keywords (Mock)',
         status: 'ACTIVE',
         targeting: {
           locations: ['TH', 'US'],
@@ -159,7 +251,7 @@ export class CentralApiHub {
           performanceType: 'search_text'
         },
         metrics: {
-          spend: Math.round(limit * 0.12),
+          spend: 1800,
           impressions: 25000,
           clicks: 3400,
           conversions: 190,
@@ -168,7 +260,7 @@ export class CentralApiHub {
       },
       {
         campaignId: `camp-gg-202-${accountId}`,
-        campaignName: 'Google Performance Max - All Products',
+        campaignName: 'Google Performance Max - All Products (Mock)',
         status: 'ACTIVE',
         targeting: {
           locations: ['TH'],
@@ -181,7 +273,7 @@ export class CentralApiHub {
           performanceType: 'pmax_assets'
         },
         metrics: {
-          spend: Math.round(limit * 0.18),
+          spend: 3200,
           impressions: 125000,
           clicks: 8200,
           conversions: 410,
