@@ -127,7 +127,7 @@ export async function syncAccounts() {
 
             await supabase.rpc('upsert_analytics_cache', {
               p_account_id: acc.id,
-              p_metric_date: today,
+              p_metric_date: item.metricDate || today,
               p_dimensions: dimensions,
               p_metrics: metrics
             })
