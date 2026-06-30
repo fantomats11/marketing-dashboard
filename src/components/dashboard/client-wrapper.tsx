@@ -47,7 +47,16 @@ export default function DashboardClientWrapper({
   const router = useRouter()
 
   // --- Sidebar Active Tab ---
-  const [sidebarTab, setSidebarTab] = useState<'home' | 'report' | 'sources' | 'support' | 'user'>('report')
+  const [sidebarTab, setSidebarTab] = useState<'home' | 'report' | 'sources' | 'support' | 'user'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const tabParam = params.get('tab')
+      if (tabParam === 'sources' || tabParam === 'home' || tabParam === 'report' || tabParam === 'support' || tabParam === 'user') {
+        return tabParam as any
+      }
+    }
+    return 'report'
+  })
 
   // --- Sub-Tab State inside Customer Report ---
   const [activeTab, setActiveTab] = useState<'analytics' | 'offline'>('analytics')
