@@ -170,7 +170,7 @@ export class CentralApiHub {
       return json.results.map((row: any) => {
         const spend = Number(row.metrics?.costMicros || 0) / 1000000
         const conversions = Number(row.metrics?.conversions || 0)
-        const revenue = Number(row.metrics?.conversionsValue || 0)
+        const revenue = 0 // O2O model does not report revenue through ad networks
 
         return {
           campaignId: row.campaign.id,
