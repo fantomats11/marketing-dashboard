@@ -860,7 +860,7 @@ export default function DashboardClientWrapper({
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginTop: '16px' }}>
                 <span>{t.historicalDataNotice}</span>
-                <span>{t.lastUpdated}: {cachedAnalytics.length > 0 ? new Date(cachedAnalytics[0].updated_at).toLocaleTimeString() : 'N/A'}</span>
+                <span suppressHydrationWarning>{t.lastUpdated}: {cachedAnalytics.length > 0 ? new Date(cachedAnalytics[0].updated_at).toLocaleTimeString() : 'N/A'}</span>
               </div>
             </section>
           </div>
